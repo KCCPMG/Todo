@@ -1,0 +1,649 @@
+<head>
+
+  <script>
+    class Task {
+
+      static tree = {indent: -1, taskID: 0, subTasks:[]};
+      static nextTaskID = 1;
+
+      static cancelBelowButton() {
+        let cbb = document.createElement("button");
+        cbb.setAttribute("class", "cancel-below-button");
+        cbb.innerHTML = "Cancel Task Below";
+        cbb.onclick = function() {
+          let startRow = cbb.parentNode.parentNode;
+          let additionRow = startRow.nextSibling;
+          additionRow.remove();
+          cbb.replaceWith(Task.createBelowButton());
+        }
+        return cbb;
+      }
+
+      static createBelowButton() {
+        let cbb = document.createElement("button");
+        cbb.setAttribute("class", "create-below-button");
+        cbb.innerHTML = "New Task Below";
+        cbb.onclick = function() {
+          let startRow = cbb.parentNode.parentNode;
+          let additionRow = document.createElement("div");
+
+          additionRow.setAttribute("class", "addition-Row");
+          startRow.insertAdjacentElement("afterend", additionRow);
+          // Sanity Check
+          // console.log(`Addition Row HTML: ${additionRow.outerHTML}`)
+
+          let textbox = document.createElement("input");
+          textbox.setAttribute("class", "new-task-box");
+          let submit_button = document.createElement("button");
+          submit_button.innerText = "Submit";
+          submit_button.setAttribute("class", "submit-button");
+
+          // Sanity Check
+          // console.log(`Prior Sibling: ${taskFromDOM(startRow).text}`)
+
+          submit_button.onclick = function() {
+            let text = additionRow.getElementsByClassName("new-task-box")[0].value;
+            let priorSiblingTask = taskFromDOM(startRow);
+            let parentTask = getTask(Task.tree, priorSiblingTask.parentID);
+            let newTask = new Task(text, {
+              parentID: parentTask.taskID,
+              position: priorSiblingTask.position + 1
+            });
+            // Sanity Check
+            // console.log(`${newTask.text} position ${newTask.position} from ${priorSiblingTask.text} position ${priorSiblingTask.position}`)
+
+            additionRow.remove();
+            startRow.insertAdjacentElement('afterend', newTask.taskHTML());
+
+            startRow.getElementsByClassName("cancel-below-button")[0].replaceWith(Task.createBelowButton());
+
+          }
+          additionRow.append(textbox);
+          textbox.select();
+          textbox.onkeydown = function(e) {
+            if (e.code == "Enter") {
+              submit_button.click();
+            }
+          }
+          additionRow.append(submit_button);
+          cbb.replaceWith(Task.cancelBelowButton());
+        }
+        return cbb;
+      }
+
+      static completeTaskButton() {
+        let button = document.createElement("button");
+        button.innerText = "Mark As Complete";
+        button.setAttribute("class", "complete-task-button")
+        button.onclick = function() {
+          let taskEl = button.parentNode.parentNode;
+          let task = taskFromDOM(taskEl);
+          task.completeTask();
+          button.replaceWith(Task.incompleteTaskButton());
+        }
+        return button;
+      }
+
+      static incompleteTaskButton() {
+        let button = document.createElement("button");
+        button.innerText = "Mark As Incomplete";
+        button.setAttribute("class", "incomplete-task-button")
+        button.onclick = function() {
+          let taskEl = button.parentNode.parentNode;
+          let task = taskFromDOM(taskEl);
+          task.incompleteTask();
+          button.replaceWith(Task.completeTaskButton());
+        }
+        return button;
+      }
+
+      static deleteTaskButton() {
+        let button = document.createElement("button");
+        button.innerText = "Delete Task";
+        button.setAttribute("class", "delete-task-button");
+        button.onclick = function() {
+          let task = taskFromDOM(button.parentNode.parentNode);
+          task.deleteTask();
+        }
+        return button;
+      }
+
+      static createSubTaskButton() {
+        let button = document.createElement("button")
+        button.innerText = "Create New SubTask";
+        button.setAttribute("class", "create-sub-task-button");
+        button.onclick = function() {
+          let task_el = button.parentNode.parentNode;
+          let task = taskFromDOM(task_el);
+          let additionRow = document.createElement("div");
+          let textbox = document.createElement("input");
+          textbox.setAttribute("class", "new-text-box");
+          additionRow.append(textbox);
+          let submit_button = document.createElement("button");
+          submit_button.innerText = "Submit";
+          submit_button.setAttribute("class", "submit-button");
+          additionRow.append(textbox);
+          additionRow.append(submit_button);
+          task_el.insertAdjacentElement('afterend', additionRow);
+          submit_button.onclick = function() {
+            let text = additionRow.getElementsByClassName("new-text-box")[0].value;
+            additionRow.remove();
+            // Sanity Check
+            // console.log(task.taskID);
+
+            let newTask = new Task(text, {
+              parentID: task.taskID,
+              position: function() {
+                if (task.subTasks.length > 0){
+                  return Math.max(...task.subTasks.map((x) => x.position)) + 1;
+                } else {
+                  return 0;
+                }
+              }()
+            });
+
+            let element = elementFromTask(task);
+            element.append(newTask.taskHTML());
+
+            task_el.getElementsByClassName("cancel-sub-task-button")[0].replaceWith(Task.createSubTaskButton());
+          }
+          textbox.select();
+          textbox.onkeydown = function(e) {
+            if (e.code == "Enter") {
+              submit_button.click();
+            }
+          }
+          button.replaceWith(Task.cancelSubTaskButton());
+        }
+        return button;
+      }
+
+      static cancelSubTaskButton() {
+        let button = document.createElement("button");
+        button.innerText = "Cancel New SubTask";
+        button.setAttribute("class", "cancel-sub-task-button");
+        button.onclick = function() {
+          button.parentNode.parentNode.nextSibling.remove();
+          button.replaceWith(Task.createSubTaskButton());
+        }
+        return button;
+      }
+
+      static showChildrenButton() {
+        let scbutton = document.createElement("button");
+        scbutton.innerText = "Show Subtasks";
+        scbutton.setAttribute("class", "show-children-button");
+        scbutton.onclick = function() {
+          let startRow = scbutton.parentNode.parentNode;
+          let task = taskFromDOM(startRow);
+          task.showChildren();
+          scbutton.replaceWith(Task.hideChildrenButton());
+        }
+        return scbutton;
+      }
+
+      static hideChildrenButton() {
+        let hcbutton = document.createElement("button");
+        hcbutton.innerText = "Hide Subtasks";
+        hcbutton.setAttribute("class", "show-children-button");
+        hcbutton.onclick = function() {
+          let startRow = hcbutton.parentNode.parentNode;
+          let task = taskFromDOM(startRow);
+          task.hideChildren();
+          hcbutton.replaceWith(Task.showChildrenButton());
+        }
+        return hcbutton;
+      }
+
+
+
+      constructor(text, argobj) {
+        this.text = text;
+
+        if (argobj == null) {
+          argobj = {};
+        }
+        for (let key of Object.keys(argobj)) {
+            this[key] = argobj[key];
+        }
+        this.subTasks = [];
+
+        let defaultValues = {
+          assignedTo: null,
+          assignedBy: null,
+          assignedOn: null,
+          assignedDue: null,
+          completed: false,
+          completedBy: null,
+          completedOn: null,
+        }
+
+
+        for (let key in Object.keys(defaultValues)) {
+          let realkey = Object.keys(defaultValues)[key];
+          if (this[realkey] == null){
+            this[realkey] = defaultValues[realkey];
+          }
+        }
+
+        if (this.taskID == null) {
+          this.taskID = Task.nextTaskID++;
+        }
+
+        if (this.parentID == null) {
+          this.parentID = Task.tree.taskID;
+        }
+        let parentTask = getTask(Task.tree, this.parentID)
+        this.indent = parentTask.indent + 1;
+
+        if (this.position != null) {
+          parentTask.subTasks.splice(this.position-1, 0, this);
+
+          let pushedTasks = parentTask.subTasks.slice(this.position, parentTask.subTasks.length);
+          for (let task_i in pushedTasks) {
+            pushedTasks[task_i].position++;
+          }
+
+        }
+        // Sanity Check
+        // console.log(`Constructor - Text: ${this.text} TaskID: ${this.taskID} Position: ${this.position}`);
+
+        this.taskHTML = function() {
+          let div = document.createElement("div");
+          div.setAttribute("class", "task-row");
+          div.setAttribute("id", `task-id-${this.taskID}`);
+          div.style.paddingLeft = this.indent*20;
+
+          let textdiv;
+          if (this.completed == false) {
+            textdiv = document.createElement("div");
+          } else {
+            textdiv = document.createElement("del");
+          }
+          textdiv.setAttribute("class", "task");
+          textdiv.style.paddingLeft = this.indent;
+          textdiv.innerHTML = text;
+          div.append(textdiv);
+
+          let button_div = document.createElement("div");
+          button_div.setAttribute("class", "button-div");
+          div.append(button_div);
+
+          button_div.append(Task.createBelowButton());
+          if (this.completed != true) {
+            button_div.append(Task.completeTaskButton());
+          } else {
+            button_div.append(Task.incompleteTaskButton());
+          }
+          button_div.append(Task.deleteTaskButton());
+          button_div.append(Task.createSubTaskButton());
+          button_div.append(Task.showChildrenButton());
+
+          return div;
+        }
+      }
+
+
+
+      deleteTask() {
+        elementFromTask(this).remove();
+        let parent = getTask(Task.tree, this.parentID);
+        let index = parent.subTasks.indexOf(this);
+        parent.subTasks.splice(index, 1);
+        let movedTasks = parent.subTasks.slice(index, parent.subTasks.length);
+        for (task_i in movedTasks) {
+          movedTasks[task_i].position--;
+        }
+        delete(this);
+      }
+
+
+      newTaskBox() {
+        let textbox = document.createElement("input");
+        textbox.setAttribute("class", "new-task-box");
+        return textbox;
+      }
+
+
+      assignTask(assignedTo, assignedBy = null, assignedOn = null) {
+        this.assignedTo = assignedTo;
+        this.assignedBy = assignedBy;
+        this.assignedOn = assignedOn;
+        this.assignedDue = assignedDue;
+      }
+
+      completeTask(completedBy = null, completedOn = null) {
+        this.completed = true;
+        this.completedBy = completedBy;
+        this.completedOn = completedOn;
+        this.redrawElement();
+      }
+
+      incompleteTask() {
+        this.completed = false;
+        this.completeBy = null;
+        this.completeOn = null;
+        this.redrawElement();
+      }
+
+      createSubTask(text) {
+        let newTask = new Task(text, {parentID: this.taskID});
+        let element = elementFromTask(this);
+        element.append(newTask.taskHTML());
+      }
+
+      redrawElement() {
+        let taskEl = elementFromTask(this).getElementsByClassName("task")[0];
+        taskEl.replaceWith(this.taskHTML().getElementsByClassName("task")[0]);
+      }
+
+      showChildren() {
+        for (task_i in this.subTasks) {
+          let el = elementFromTask(this.subTasks[task_i]);
+          el.style.visibility = "visible";
+          el.style.height = "";
+        }
+      }
+
+      hideChildren() {
+        for (task_i in this.subTasks) {
+          let el = elementFromTask(this.subTasks[task_i]);
+          el.style.visibility = "hidden";
+          el.style.height = 0;
+          if (this.subTasks[task_i].subTasks) {
+            this.subTasks[task_i].hideChildren();
+          }
+        }
+      }
+
+    }
+
+
+    function taskFromDOM(element) {
+      let elem_id = element.getAttribute("id");
+      let id = Number(elem_id.slice(8));
+      return getTask(Task.tree, id);
+    }
+
+
+
+    function getTask(tree, id) {
+      if (tree.taskID == id) {
+        return tree;
+      }
+      for (task_i in tree.subTasks) {
+        if (tree.subTasks[task_i].taskID == id) {
+          return tree.subTasks[task_i];
+        } else if (tree.subTasks[task_i].subTasks) {
+          let gt = getTask(tree.subTasks[task_i], id)
+          if (gt != undefined) {
+            return gt;
+          }
+        }
+      }
+    }
+
+    function elementFromTask(task) {
+      let id = task.taskID;
+      return document.getElementById(`task-id-${id}`);
+    }
+
+    function hideElement(element) {
+      element.style.height = 0;
+      element.style.visibility = "hidden";
+    }
+
+    function showElement(element) {
+      element.style.height = "";
+      element.style.visibility = "visible";
+    }
+
+    // Test function only
+    function hideChildren(task) {
+      if (task.subTasks) {
+        for (task_i in task.subTasks) {
+          let element = elementFromTask(task.subTasks[task_i]);
+          hideElement(element);
+        }
+      }
+    }
+
+    // Test function only
+    function showChildren(task) {
+      if (task.subTasks) {
+        for (task_i in task.subTasks) {
+          let element = elementFromTask(task.subTasks[task_i]);
+          showElement(element);
+        }
+      }
+    }
+
+    function clearDOMTree() {
+      let htmlTree = document.getElementById("tree");
+      htmlTree.innerHTML = "";
+    }
+
+    function clearTree() {
+      let htmlTree = document.getElementById("tree");
+      Task.tree.subTasks = [];
+      htmlTree.innerHTML = "";
+    }
+
+
+    function drawTree() {
+      let htmlTree = document.getElementById("tree");
+      for (task_i in Task.tree.subTasks) {
+        htmlTree.append(Task.tree.subTasks[task_i].taskHTML());
+      }
+    }
+
+    function redrawTree() {
+      let htmlTree = document.getElementById("tree");
+      htmlTree.innerHTML = "";
+      for (task_i in Task.tree.subTasks) {
+        htmlTree.append(Task.tree.subTasks[task_i].taskHTML());
+      }
+    }
+
+    function redrawFullTree(objIn) {
+      if (objIn == null) {
+        objIn = Task.tree;
+      }
+      for (task of objIn.subTasks) {
+        let el = task.taskHTML();
+        let parent = getTask(Task.tree, task.parentID);
+        let parentEl = elementFromTask(parent);
+        if (parentEl == null) {
+          parentEl = document.getElementById("tree");
+        }
+        parentEl.append(el);
+        if (task.subTasks) {
+          redrawFullTree(task);
+        }
+      }
+    }
+
+
+
+    function createTasks(objIn) {
+      for (let key_index in (objIn.subTasks)) {
+        new Task(objIn.subTasks[key_index].text, objIn.subTasks[key_index]);
+        if (objIn.subTasks[key_index].taskID >= Task.nextTaskID) {
+          Task.nextTaskID = objIn.subTasks[key_index].taskID+1;
+        }
+        if(objIn.subTasks[key_index].subTasks) {
+          createTasks(objIn.subTasks[key_index]);
+        }
+      }
+    }
+
+    // To eliminate new line characters created from New Task entry
+    function trimNewlines(text) {
+        let newtext = text.replace(/\n$/, "");
+        if (newtext != text) {
+            return trimNewlines(newtext);
+        } else {
+            return text;
+        }
+    }
+
+    // Console-accessible variable
+    var j_object = {};
+
+
+    window.onload = function() {
+      document.getElementById("new-task-button").onclick = function() {
+        textEl = document.getElementById("new-task-input");
+        text = trimNewlines(textEl.value);
+        if (text.length > 0) {
+          new Task(text, {
+            position: function() {
+              if (Task.tree.subTasks.length == 0) {
+                return 0;
+              } else {
+                return Task.tree.subTasks[Task.tree.subTasks.length-1].position + 1;
+              }
+            }()
+          });
+        }
+        redrawTree();
+        textEl.value = "";
+      }
+
+      document.getElementById("new-task-input").placeholder = "New Task Here";
+      document.getElementById("new-task-input").onkeydown = function(e) {
+        if (e.code == "Enter") {
+          document.getElementById("new-task-input").onkeyup = function(e) {
+            if (e.code == "Enter") {
+              document.getElementById("new-task-button").click();
+            }
+          }
+        }
+      }
+
+      document.getElementById("download-button").onclick = function() {
+        document.getElementById("download").setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(JSON.stringify(Task.tree)));
+        document.getElementById("download").setAttribute("download", function() {
+          let dload_name_in = document.getElementById("download-as");
+          let dload_name;
+          if (dload_name_in.value.length > 0) {
+            dload_name = dload_name_in.value;
+          } else {
+            let now = new Date(Date.now());
+            dload_name = `Object ${now.toUTCString()}`
+          }
+          return `${dload_name}.json`
+        }());
+      }
+
+      document.getElementById("upload").oninput = function() {
+        document.getElementById("download-button").innerText = "Loading";
+        clearTree();
+        let upload = document.getElementById("upload");
+        let file = upload.files[0];
+        filename = upload.value.slice(upload.value.lastIndexOf("\\")+1);
+        document.getElementById("download-as").value = filename;
+        let reader = new FileReader();
+        reader.readAsText(file, 'UTF-8');
+        reader.onload = function() {
+          j_object = JSON.parse(reader.result)
+          createTasks(j_object);
+          redrawFullTree();
+          document.getElementById("download-button").innerText = "Download";
+          upload.value = "";
+        }
+      }
+    }
+
+  </script>
+  <style>
+    #download {
+      display: inline-block;
+    }
+
+    #new-task-input {
+      resize: horizontal;
+      width: 400;
+    }
+
+    #new-task-input {
+      min-height: 60px;
+    }
+
+    .file-control {
+      display: inline-block;
+      border: 1px solid black;
+      padding: 5px;
+      margin: 0px;
+    }
+
+
+    .task {
+      display: inline-block;
+      padding-right: 40%;
+      vertical-align: middle;
+    }
+
+    .task:hover {
+      cursor: pointer;
+    }
+
+    .task-row {
+      display: inline-block;
+      /* height: 50px; */
+      height: auto;
+      width: 100%;
+    }
+
+    .task-row:hover {
+      background-color: #E7E7E7;
+    }
+
+    .task-row:hover > .button-div {
+      visibility: visible;
+    }
+
+    .button-div {
+      display: block;
+      visibility: hidden;
+      padding-top: 15px;
+      padding-bottom: 5px;
+    }
+
+    .create-below-button {
+      display: inline-block;
+    }
+
+    button:hover {
+      cursor: pointer;
+      background-color: white;
+    }
+
+
+  </style>
+
+</head>
+
+<div id="file-controls">
+  <div id="upload-block" class="file-control">
+    Upload Task File
+    <br/>
+    <input id="upload" type="file"/>
+  </div>
+  <div id="download-block" class="file-control">
+    Download Current Task File
+    <br/>
+    <input id="download-as" type="text" placeholder="Download file name"/>
+    <a id="download" href="data:text/plain;charset=utf-8">
+      <button id="download-button">Download</button>
+    </a>
+  </div>
+</div>
+<br/><br/>
+<textarea id="new-task-input" text="Select file to upload"></textarea>
+<br/><br/>
+<button id="new-task-button">
+  New Task
+</button>
+<br/><br/>
+<div id="tree"></div>
